@@ -22,11 +22,18 @@ struct BoundSphere
 	float				radius;
 };
 
+struct BoundBox
+{
+	DirectX::XMFLOAT3	aabbMin;
+	DirectX::XMFLOAT3	aabbMax;
+};
+
 struct Meshlet
 {
 	uint32_t				indexOffset;
 	uint32_t				indexCount;
 	BoundSphere				boundingSphere;
+	BoundBox				boundingBox;
 };	// struct Meshlet
 
 class SubmeshWork
@@ -55,6 +62,10 @@ public:
 	{
 		return boundingSphere_;
 	}
+	const BoundBox& GetBoundingBox() const
+	{
+		return boundingBox_;
+	}
 	const std::vector<Meshlet>& GetMeshlets() const
 	{
 		return meshlets_;
@@ -65,6 +76,7 @@ private:
 	std::vector<Vertex>		vertexBuffer_;
 	std::vector<uint32_t>	indexBuffer_;
 	BoundSphere				boundingSphere_;
+	BoundBox				boundingBox_;
 
 	std::vector<Meshlet>	meshlets_;
 	std::vector<uint32_t>	meshletIndexBuffer_;
@@ -163,9 +175,13 @@ public:
 	{
 		return textures_;
 	}
-	const BoundSphere GetBoundingSphere() const
+	const BoundSphere& GetBoundingSphere() const
 	{
 		return boundingSphere_;
+	}
+	const BoundBox& GetBoundingBox() const
+	{
+		return boundingBox_;
 	}
 
 private:
@@ -175,6 +191,7 @@ private:
 	std::vector<std::unique_ptr<TextureWork>>	textures_;
 
 	BoundSphere				boundingSphere_;
+	BoundBox				boundingBox_;
 };	// class MeshWork
 
 //	EOF

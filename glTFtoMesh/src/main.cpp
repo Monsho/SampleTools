@@ -216,6 +216,12 @@ int main(int argv, char* argc[])
 	out_resource->boundingSphere_.centerY = mesh_work->GetBoundingSphere().center.y;
 	out_resource->boundingSphere_.centerZ = mesh_work->GetBoundingSphere().center.z;
 	out_resource->boundingSphere_.radius = mesh_work->GetBoundingSphere().radius;
+	out_resource->boundingBox_.minX = mesh_work->GetBoundingBox().aabbMin.x;
+	out_resource->boundingBox_.minY = mesh_work->GetBoundingBox().aabbMin.y;
+	out_resource->boundingBox_.minZ = mesh_work->GetBoundingBox().aabbMin.z;
+	out_resource->boundingBox_.maxX = mesh_work->GetBoundingBox().aabbMax.x;
+	out_resource->boundingBox_.maxY = mesh_work->GetBoundingBox().aabbMax.y;
+	out_resource->boundingBox_.maxZ = mesh_work->GetBoundingBox().aabbMax.z;
 	for (auto&& mat : mesh_work->GetMaterials())
 	{
 		sl12::ResourceMeshMaterial out_mat;
@@ -259,25 +265,39 @@ int main(int argv, char* argc[])
 		CopyBuffer(out_resource->vbTexcoord_,  vbu.data(), sizeof(float) * vbu.size());
 		CopyBuffer(out_resource->indexBuffer_, src_ib.data(), sizeof(uint32_t) * src_ib.size());
 
-		out_sub.vbOffset_ = vb_offset;
-		out_sub.ibOffset_ = ib_offset;
-		vb_offset += (uint32_t)src_vb.size();
-		ib_offset += (uint32_t)src_ib.size();
+		out_sub.vertexOffset_ = vb_offset;
+		out_sub.indexOffset_ = ib_offset;
+		out_sub.vertexCount_ = (uint32_t)src_vb.size();
+		out_sub.indexCount_ = (uint32_t)src_ib.size();
+		vb_offset += out_sub.vertexCount_;
+		ib_offset += out_sub.indexCount_;
 
 		out_sub.boundingSphere_.centerX = submesh->GetBoundingSphere().center.x;
 		out_sub.boundingSphere_.centerY = submesh->GetBoundingSphere().center.y;
 		out_sub.boundingSphere_.centerZ = submesh->GetBoundingSphere().center.z;
 		out_sub.boundingSphere_.radius = submesh->GetBoundingSphere().radius;
+		out_sub.boundingBox_.minX = submesh->GetBoundingBox().aabbMin.x;
+		out_sub.boundingBox_.minY = submesh->GetBoundingBox().aabbMin.y;
+		out_sub.boundingBox_.minZ = submesh->GetBoundingBox().aabbMin.z;
+		out_sub.boundingBox_.maxX = submesh->GetBoundingBox().aabbMax.x;
+		out_sub.boundingBox_.maxY = submesh->GetBoundingBox().aabbMax.y;
+		out_sub.boundingBox_.maxZ = submesh->GetBoundingBox().aabbMax.z;
 
 		for (auto&& meshlet : submesh->GetMeshlets())
 		{
 			sl12::ResourceMeshMeshlet m;
-			m.ibOffset_ = meshlet.indexOffset;
-			m.ibCount_ = meshlet.indexCount;
+			m.indexOffset_ = meshlet.indexOffset;
+			m.indexCount_ = meshlet.indexCount;
 			m.boundingSphere_.centerX = meshlet.boundingSphere.center.x;
 			m.boundingSphere_.centerY = meshlet.boundingSphere.center.y;
 			m.boundingSphere_.centerZ = meshlet.boundingSphere.center.z;
 			m.boundingSphere_.radius = meshlet.boundingSphere.radius;
+			m.boundingBox_.minX = meshlet.boundingBox.aabbMin.x;
+			m.boundingBox_.minY = meshlet.boundingBox.aabbMin.y;
+			m.boundingBox_.minZ = meshlet.boundingBox.aabbMin.z;
+			m.boundingBox_.maxX = meshlet.boundingBox.aabbMax.x;
+			m.boundingBox_.maxY = meshlet.boundingBox.aabbMax.y;
+			m.boundingBox_.maxZ = meshlet.boundingBox.aabbMax.z;
 			out_sub.meshlets_.push_back(m);
 		}
 

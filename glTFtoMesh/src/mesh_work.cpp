@@ -361,12 +361,20 @@ bool MeshWork::ReadGLTFMesh(const std::string& inputPath, const std::string& inp
 			// compute bounds.
 			std::vector<DirectX::XMFLOAT3> points;
 			points.reserve(work->vertexBuffer_.size());
+			DirectX::XMVECTOR aabbMin = DirectX::XMLoadFloat3(&work->vertexBuffer_[0].pos);
+			DirectX::XMVECTOR aabbMax = DirectX::XMLoadFloat3(&work->vertexBuffer_[0].pos);
 			for (auto&& v : work->vertexBuffer_)
 			{
 				points.push_back(v.pos);
 				all_points.push_back(v.pos);
+
+				DirectX::XMVECTOR p = DirectX::XMLoadFloat3(&v.pos);
+				aabbMin = DirectX::XMVectorMin(aabbMin, p);
+				aabbMax = DirectX::XMVectorMax(aabbMax, p);
 			}
 			ComputeBoundingSphere(&points[0].x, points.size(), work->boundingSphere_.center, work->boundingSphere_.radius);
+			DirectX::XMStoreFloat3(&work->boundingBox_.aabbMin, aabbMin);
+			DirectX::XMStoreFloat3(&work->boundingBox_.aabbMax, aabbMax);
 
 			submeshes_.push_back(std::move(work));
 		}
@@ -374,6 +382,18 @@ bool MeshWork::ReadGLTFMesh(const std::string& inputPath, const std::string& inp
 
 	// compute mesh bounds.
 	ComputeBoundingSphere(&all_points[0].x, all_points.size(), boundingSphere_.center, boundingSphere_.radius);
+	{
+		DirectX::XMVECTOR aabbMin = DirectX::XMLoadFloat3(&all_points[0]);
+		DirectX::XMVECTOR aabbMax = DirectX::XMLoadFloat3(&all_points[0]);
+		for (auto&& v : all_points)
+		{
+			DirectX::XMVECTOR p = DirectX::XMLoadFloat3(&v);
+			aabbMin = DirectX::XMVectorMin(aabbMin, p);
+			aabbMax = DirectX::XMVectorMax(aabbMax, p);
+		}
+		DirectX::XMStoreFloat3(&boundingBox_.aabbMin, aabbMin);
+		DirectX::XMStoreFloat3(&boundingBox_.aabbMax, aabbMax);
+	}
 
 	return true;
 }
@@ -449,7 +469,7 @@ void MeshWork::OptimizeSubmesh()
 
 		// optimization.
 		meshopt_optimizeVertexCache(new_index_buffer.data(), new_index_buffer.data(), new_index_buffer.size(), new_vertex_count);
-		meshopt_optimizeOverdraw(new_index_buffer.data(), new_index_buffer.data(), new_index_buffer.size(), &new_vertex_buffer[0].pos.x, new_vertex_buffer.size(), sizeof(Vertex), kOverdrawThreshold);
+		//meshopt_optimizeOverdraw(new_index_buffer.data(), new_index_buffer.data(), new_index_buffer.size(), &new_vertex_buffer[0].pos.x, new_vertex_buffer.size(), sizeof(Vertex), kOverdrawThreshold);
 		meshopt_optimizeVertexFetch(new_vertex_buffer.data(), new_index_buffer.data(), new_index_buffer.size(), new_vertex_buffer.data(), new_vertex_buffer.size(), sizeof(Vertex));
 
 		// swap.
@@ -477,6 +497,8 @@ void MeshWork::BuildMeshlets()
 				continue;
 			}
 
+			std::vector<Vertex> this_vtx;
+
 			// copy indices.
 			Meshlet work;
 			work.indexOffset = (uint32_t)submesh->meshletIndexBuffer_.size();
@@ -486,6 +508,10 @@ void MeshWork::BuildMeshlets()
 				submesh->meshletIndexBuffer_.push_back(meshlet.vertices[meshlet.indices[i][0]]);
 				submesh->meshletIndexBuffer_.push_back(meshlet.vertices[meshlet.indices[i][1]]);
 				submesh->meshletIndexBuffer_.push_back(meshlet.vertices[meshlet.indices[i][2]]);
+
+				this_vtx.push_back(submesh->vertexBuffer_[meshlet.vertices[meshlet.indices[i][0]]]);
+				this_vtx.push_back(submesh->vertexBuffer_[meshlet.vertices[meshlet.indices[i][1]]]);
+				this_vtx.push_back(submesh->vertexBuffer_[meshlet.vertices[meshlet.indices[i][2]]]);
 			}
 
 			// compute bounds.
@@ -494,6 +520,17 @@ void MeshWork::BuildMeshlets()
 			work.boundingSphere.center.y = bounds.center[1];
 			work.boundingSphere.center.z = bounds.center[2];
 			work.boundingSphere.radius = bounds.radius;
+
+			DirectX::XMVECTOR aabbMin = DirectX::XMLoadFloat3(&this_vtx[0].pos);
+			DirectX::XMVECTOR aabbMax = DirectX::XMLoadFloat3(&this_vtx[0].pos);
+			for (auto&& v : this_vtx)
+			{
+				DirectX::XMVECTOR p = DirectX::XMLoadFloat3(&v.pos);
+				aabbMin = DirectX::XMVectorMin(aabbMin, p);
+				aabbMax = DirectX::XMVectorMax(aabbMax, p);
+			}
+			DirectX::XMStoreFloat3(&work.boundingBox.aabbMin, aabbMin);
+			DirectX::XMStoreFloat3(&work.boundingBox.aabbMax, aabbMax);
 
 			submesh->meshlets_.push_back(work);
 		}
