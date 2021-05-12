@@ -19,6 +19,11 @@
 #include "sl12/resource_mesh.h"
 #undef private
 
+#define NOMINMAX
+#include <windows.h>
+#include <imagehlp.h>
+#pragma comment(lib, "imagehlp.lib")
+
 
 using namespace Microsoft::glTF;
 
@@ -31,6 +36,17 @@ namespace
 		for (auto&& it : path)
 		{
 			ret += (it == '\\') ? '/' : it;
+		}
+		return ret;
+	}
+
+	std::string ConvSlashToYen(const std::string& path)
+	{
+		std::string ret;
+		ret.reserve(path.length() + 1);
+		for (auto&& it : path)
+		{
+			ret += (it == '/') ? '\\' : it;
 		}
 		return ret;
 	}
@@ -71,11 +87,27 @@ struct ToolOptions
 	bool			meshletFlag = false;
 };	// struct ToolOptions
 
+void DisplayHelp()
+{
+	fprintf(stdout, "glTFtoMesh : Convert glTF format to sl12 mesh format.\n");
+	fprintf(stdout, "options:\n");
+	fprintf(stdout, "    -i <file_path>  : input glTf(.glb) file path.\n");
+	fprintf(stdout, "    -o <file_path>  : output sl12 mesh(.rmesh) file path.\n");
+	fprintf(stdout, "    -to <directory> : output texture file directory.\n");
+	fprintf(stdout, "    -merge <0/1>    : merge submeshes have same material. (default: 1)\n");
+	fprintf(stdout, "    -opt <0/1>      : optimize mesh. (default: 1)\n");
+	fprintf(stdout, "    -let <0/1>      : create meshlets. (default: 0)\n");
+	fprintf(stdout, "\n");
+	fprintf(stdout, "example:\n");
+	fprintf(stdout, "    glTFtoMesh.exe -i \"D:/input/sample.glb\" -o \"D:/output/sample.rmesh\" -to \"D:/output/textures/\" -let 1\n");
+}
+
 int main(int argv, char* argc[])
 {
 	if (argv == 1)
 	{
 		// display help.
+		DisplayHelp();
 		return 0;
 	}
 
@@ -179,6 +211,12 @@ int main(int argv, char* argc[])
 		options.outputTexPath = GetPath(ConvYenToSlash(options.outputFilePath));
 	}
 
+	{
+		auto outDir = GetPath(ConvYenToSlash(options.outputFilePath));
+		MakeSureDirectoryPathExists(ConvSlashToYen(outDir).c_str());
+		MakeSureDirectoryPathExists(ConvSlashToYen(options.outputTexPath).c_str());
+	}
+
 	auto mesh_work = std::make_unique<MeshWork>();
 	if (!mesh_work->ReadGLTFMesh(options.inputPath, options.inputFileName))
 	{
@@ -229,6 +267,7 @@ int main(int argv, char* argc[])
 		out_mat.textureNames_.push_back(mat->GetTextrues()[MaterialWork::TextureKind::BaseColor]);
 		out_mat.textureNames_.push_back(mat->GetTextrues()[MaterialWork::TextureKind::Normal]);
 		out_mat.textureNames_.push_back(mat->GetTextrues()[MaterialWork::TextureKind::ORM]);
+		out_mat.isOpaque_ = mat->IsOpaque();
 		out_resource->materials_.push_back(out_mat);
 	}
 	uint32_t vb_offset = 0;

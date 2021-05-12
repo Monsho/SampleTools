@@ -121,6 +121,9 @@
       <AdditionalLibraryDirectories>$(ProjectDir)..\third_party\meshoptimizer\$(Configuration)\;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>meshoptimizer.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>call after_build.bat</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\third_party\mikktspace\mikktspace.c" />
