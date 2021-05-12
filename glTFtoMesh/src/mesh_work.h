@@ -32,6 +32,10 @@ struct Meshlet
 {
 	uint32_t				indexOffset;
 	uint32_t				indexCount;
+	uint32_t				primitiveOffset;
+	uint32_t				primitiveCount;
+	uint32_t				vertexIndexOffset;
+	uint32_t				vertexIndexCount;
 	BoundSphere				boundingSphere;
 	BoundBox				boundingBox;
 };	// struct Meshlet
@@ -58,6 +62,14 @@ public:
 	{
 		return indexBuffer_;
 	}
+	const std::vector<uint32_t>& GetPackedPrimitive() const
+	{
+		return meshletPackedPrimitive_;
+	}
+	const std::vector<uint32_t>& GetVertexIndexBuffer() const
+	{
+		return meshletVertexIndexBuffer_;
+	}
 	const BoundSphere& GetBoundingSphere() const
 	{
 		return boundingSphere_;
@@ -80,6 +92,8 @@ private:
 
 	std::vector<Meshlet>	meshlets_;
 	std::vector<uint32_t>	meshletIndexBuffer_;
+	std::vector<uint32_t>	meshletPackedPrimitive_;
+	std::vector<uint32_t>	meshletVertexIndexBuffer_;
 };	// class SubmeshWork
 
 class MaterialWork

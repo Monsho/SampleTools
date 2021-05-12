@@ -233,6 +233,8 @@ int main(int argv, char* argc[])
 	}
 	uint32_t vb_offset = 0;
 	uint32_t ib_offset = 0;
+	uint32_t pb_offset = 0;
+	uint32_t vib_offset = 0;
 	for (auto&& submesh : mesh_work->GetSubmeshes())
 	{
 		sl12::ResourceMeshSubmesh out_sub;
@@ -240,6 +242,8 @@ int main(int argv, char* argc[])
 
 		auto&& src_vb = submesh->GetVertexBuffer();
 		auto&& src_ib = submesh->GetIndexBuffer();
+		auto&& src_pb = submesh->GetPackedPrimitive();
+		auto&& src_vib = submesh->GetVertexIndexBuffer();
 		std::vector<float> vbp, vbn, vbt, vbu;
 		vbp.resize(3 * src_vb.size());
 		vbn.resize(3 * src_vb.size());
@@ -263,14 +267,22 @@ int main(int argv, char* argc[])
 		CopyBuffer(out_resource->vbNormal_,    vbn.data(), sizeof(float) * vbn.size());
 		CopyBuffer(out_resource->vbTangent_,   vbt.data(), sizeof(float) * vbt.size());
 		CopyBuffer(out_resource->vbTexcoord_,  vbu.data(), sizeof(float) * vbu.size());
-		CopyBuffer(out_resource->indexBuffer_, src_ib.data(), sizeof(uint32_t) * src_ib.size());
+		CopyBuffer(out_resource->indexBuffer_, src_ib.data(), sizeof(uint32_t)* src_ib.size());
+		CopyBuffer(out_resource->meshletPackedPrimitive_, src_pb.data(), sizeof(uint32_t)* src_pb.size());
+		CopyBuffer(out_resource->meshletVertexIndex_, src_vib.data(), sizeof(float) * src_vib.size());
 
 		out_sub.vertexOffset_ = vb_offset;
-		out_sub.indexOffset_ = ib_offset;
 		out_sub.vertexCount_ = (uint32_t)src_vb.size();
+		out_sub.indexOffset_ = ib_offset;
 		out_sub.indexCount_ = (uint32_t)src_ib.size();
+		out_sub.meshletPrimitiveOffset_ = pb_offset;
+		out_sub.meshletPrimitiveCount_ = (uint32_t)src_pb.size();
+		out_sub.meshletVertexIndexOffset_ = vib_offset;
+		out_sub.meshletVertexIndexCount_ = (uint32_t)src_vib.size();
 		vb_offset += out_sub.vertexCount_;
 		ib_offset += out_sub.indexCount_;
+		pb_offset += out_sub.meshletPrimitiveCount_;
+		vib_offset += out_sub.meshletVertexIndexCount_;
 
 		out_sub.boundingSphere_.centerX = submesh->GetBoundingSphere().center.x;
 		out_sub.boundingSphere_.centerY = submesh->GetBoundingSphere().center.y;
@@ -288,6 +300,10 @@ int main(int argv, char* argc[])
 			sl12::ResourceMeshMeshlet m;
 			m.indexOffset_ = meshlet.indexOffset;
 			m.indexCount_ = meshlet.indexCount;
+			m.primitiveOffset_ = meshlet.primitiveOffset;
+			m.primitiveCount_ = meshlet.primitiveCount;
+			m.vertexIndexOffset_ = meshlet.vertexIndexOffset;
+			m.vertexIndexCount_ = meshlet.vertexIndexCount;
 			m.boundingSphere_.centerX = meshlet.boundingSphere.center.x;
 			m.boundingSphere_.centerY = meshlet.boundingSphere.center.y;
 			m.boundingSphere_.centerZ = meshlet.boundingSphere.center.z;

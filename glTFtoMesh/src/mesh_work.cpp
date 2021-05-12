@@ -503,15 +503,29 @@ void MeshWork::BuildMeshlets()
 			Meshlet work;
 			work.indexOffset = (uint32_t)submesh->meshletIndexBuffer_.size();
 			work.indexCount = meshlet.triangle_count * 3;
+			work.primitiveOffset = (uint32_t)submesh->meshletPackedPrimitive_.size();
+			work.primitiveCount = meshlet.triangle_count;
+			work.vertexIndexOffset = (uint32_t)submesh->meshletVertexIndexBuffer_.size();
+			work.vertexIndexCount = meshlet.vertex_count;
 			for (uint8_t i = 0; i < meshlet.triangle_count; i++)
 			{
-				submesh->meshletIndexBuffer_.push_back(meshlet.vertices[meshlet.indices[i][0]]);
-				submesh->meshletIndexBuffer_.push_back(meshlet.vertices[meshlet.indices[i][1]]);
-				submesh->meshletIndexBuffer_.push_back(meshlet.vertices[meshlet.indices[i][2]]);
+				uint32_t i0 = meshlet.indices[i][0];
+				uint32_t i1 = meshlet.indices[i][1];
+				uint32_t i2 = meshlet.indices[i][2];
+
+				submesh->meshletIndexBuffer_.push_back(meshlet.vertices[i0]);
+				submesh->meshletIndexBuffer_.push_back(meshlet.vertices[i1]);
+				submesh->meshletIndexBuffer_.push_back(meshlet.vertices[i2]);
+
+				submesh->meshletPackedPrimitive_.push_back((i2 << 20) | (i1 << 10) | i0);
 
 				this_vtx.push_back(submesh->vertexBuffer_[meshlet.vertices[meshlet.indices[i][0]]]);
 				this_vtx.push_back(submesh->vertexBuffer_[meshlet.vertices[meshlet.indices[i][1]]]);
 				this_vtx.push_back(submesh->vertexBuffer_[meshlet.vertices[meshlet.indices[i][2]]]);
+			}
+			for (uint8_t i = 0; i < meshlet.vertex_count; i++)
+			{
+				submesh->meshletVertexIndexBuffer_.push_back(meshlet.vertices[i]);
 			}
 
 			// compute bounds.
