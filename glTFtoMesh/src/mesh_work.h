@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <algorithm>
 #include "GLTFSDK/GLTF.h"
 #include "GLTFSDK/GLBResourceReader.h"
 #include "GLTFSDK/Deserialize.h"
@@ -28,6 +29,13 @@ struct BoundBox
 	DirectX::XMFLOAT3	aabbMax;
 };
 
+struct Cone
+{
+	DirectX::XMFLOAT3	apex;
+	DirectX::XMFLOAT3	axis;
+	float				cutoff;
+};
+
 struct Meshlet
 {
 	uint32_t				indexOffset;
@@ -38,6 +46,7 @@ struct Meshlet
 	uint32_t				vertexIndexCount;
 	BoundSphere				boundingSphere;
 	BoundBox				boundingBox;
+	Cone					cone;
 };	// struct Meshlet
 
 class SubmeshWork

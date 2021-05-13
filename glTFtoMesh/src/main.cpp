@@ -1,4 +1,5 @@
-﻿#include "GLTFSDK/GLTF.h"
+﻿#include <algorithm>
+#include "GLTFSDK/GLTF.h"
 #include "GLTFSDK/GLBResourceReader.h"
 #include "GLTFSDK/Deserialize.h"
 #include "meshoptimizer.h"
@@ -353,6 +354,13 @@ int main(int argv, char* argc[])
 			m.boundingBox_.maxX = meshlet.boundingBox.aabbMax.x;
 			m.boundingBox_.maxY = meshlet.boundingBox.aabbMax.y;
 			m.boundingBox_.maxZ = meshlet.boundingBox.aabbMax.z;
+			m.cone_.apexX = meshlet.cone.apex.x;
+			m.cone_.apexY = meshlet.cone.apex.y;
+			m.cone_.apexZ = meshlet.cone.apex.z;
+			m.cone_.axisX = meshlet.cone.axis.x;
+			m.cone_.axisY = meshlet.cone.axis.y;
+			m.cone_.axisZ = meshlet.cone.axis.z;
+			m.cone_.cutoff = meshlet.cone.cutoff;
 			out_sub.meshlets_.push_back(m);
 		}
 

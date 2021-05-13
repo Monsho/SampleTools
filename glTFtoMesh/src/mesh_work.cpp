@@ -534,6 +534,13 @@ void MeshWork::BuildMeshlets()
 			work.boundingSphere.center.y = bounds.center[1];
 			work.boundingSphere.center.z = bounds.center[2];
 			work.boundingSphere.radius = bounds.radius;
+			work.cone.apex.x = bounds.cone_apex[0];
+			work.cone.apex.y = bounds.cone_apex[1];
+			work.cone.apex.z = bounds.cone_apex[2];
+			work.cone.axis.x = bounds.cone_axis[0];
+			work.cone.axis.y = bounds.cone_axis[1];
+			work.cone.axis.z = bounds.cone_axis[2];
+			work.cone.cutoff = bounds.cone_cutoff;
 
 			DirectX::XMVECTOR aabbMin = DirectX::XMLoadFloat3(&this_vtx[0].pos);
 			DirectX::XMVECTOR aabbMax = DirectX::XMLoadFloat3(&this_vtx[0].pos);
