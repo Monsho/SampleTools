@@ -271,11 +271,12 @@ bool MeshWork::ReadGLTFMesh(const std::string& inputPath, const std::string& inp
 				continue;
 			}
 
-			auto index = std::stoi(tex.first);
-			auto tex_name = document.images.Get(index).uri;
+			auto tex_index = std::stoi(tex.first);
+			auto image_index = std::stoi(document.textures.Get(tex_index).imageId);
+			auto tex_name = document.images.Get(image_index).uri;
 			if (is_glb)
 			{
-				tex_name = textures_[index]->name_;
+				tex_name = textures_[image_index]->name_;
 				if (tex_name.empty())
 				{
 					tex_name = mat.name;
@@ -285,7 +286,7 @@ bool MeshWork::ReadGLTFMesh(const std::string& inputPath, const std::string& inp
 					case TextureType::Normal:				tex_name += ".n.png"; break;
 					case TextureType::MetallicRoughness:	tex_name += ".orm.png"; break;
 					}
-					textures_[index]->name_ = tex_name;
+					textures_[image_index]->name_ = tex_name;
 				}
 			}
 			switch (tex.second)
@@ -301,10 +302,71 @@ bool MeshWork::ReadGLTFMesh(const std::string& inputPath, const std::string& inp
 		materials_.push_back(std::move(work));
 	}
 
+	// read nodes.
+	for (auto&& node : document.nodes.Elements())
+	{
+		NodeWork node_work{};
+		DirectX::XMMATRIX matrix = DirectX::XMMatrixIdentity();
+
+		DirectX::XMStoreFloat4x4(&node_work.transformLocal, matrix);
+		node_work.meshIndex = -1;
+		node_work.children.clear();
+
+		if (!node.meshId.empty())
+		{
+			node_work.meshIndex = std::stoi(node.meshId);
+		}
+		for (auto&& child : node.children)
+		{
+			node_work.children.push_back(std::stoi(child));
+		}
+
+		if (node.GetTransformationType() == Microsoft::glTF::TransformationType::TRANSFORMATION_MATRIX)
+		{
+			node_work.transformLocal = DirectX::XMFLOAT4X4(node.matrix.values.data());
+		}
+		else if (node.GetTransformationType() == Microsoft::glTF::TransformationType::TRANSFORMATION_TRS)
+		{
+			auto t = DirectX::XMFLOAT3(node.translation.x, node.translation.y, node.translation.z);
+			auto r = DirectX::XMFLOAT4(node.rotation.x, node.rotation.y, node.rotation.z, node.rotation.w);
+			auto s = DirectX::XMFLOAT3(node.scale.x, node.scale.y, node.scale.z);
+
+			auto T = DirectX::XMMatrixTranslation(t.x, t.y, t.z);
+			auto R = DirectX::XMMatrixRotationQuaternion(DirectX::XMLoadFloat4(&r));
+			auto S = DirectX::XMMatrixScaling(s.x, s.y, s.z);
+
+			matrix = DirectX::XMMatrixMultiply(S, R);
+			matrix = DirectX::XMMatrixMultiply(matrix, T);
+
+			DirectX::XMStoreFloat4x4(&node_work.transformLocal, matrix);
+		}
+
+		node_work.transformGlobal = node_work.transformLocal;
+
+		nodes_.push_back(node_work);
+	}
+	// resolve children.
+	for (auto&& node : nodes_)
+	{
+		DirectX::XMMATRIX mp = DirectX::XMLoadFloat4x4(&node.transformGlobal);
+		for (auto&& child : node.children)
+		{
+			auto&& child_node = nodes_[child];
+			DirectX::XMMATRIX mc = DirectX::XMLoadFloat4x4(&child_node.transformGlobal);
+			mc = DirectX::XMMatrixMultiply(mc, mp);
+			DirectX::XMStoreFloat4x4(&child_node.transformGlobal, mc);
+		}
+	}
+
 	// read submeshes.
 	std::vector<DirectX::XMFLOAT3> all_points;
-	for (auto&& mesh : document.meshes.Elements())
+	for (auto&& node : nodes_)
 	{
+		if (node.meshIndex < 0)
+			continue;
+
+		auto&& mesh = document.meshes[node.meshIndex];
+		DirectX::XMMATRIX transform = DirectX::XMLoadFloat4x4(&node.transformGlobal);
 		for (auto&& prim : mesh.primitives)
 		{
 			std::unique_ptr<SubmeshWork> work(new SubmeshWork());
@@ -313,7 +375,30 @@ bool MeshWork::ReadGLTFMesh(const std::string& inputPath, const std::string& inp
 
 			// create base index buffer.
 			auto&& index_accessor = document.accessors.Get(prim.indicesAccessorId);
-			work->indexBuffer_ = resource_reader->ReadBinaryData<uint32_t>(document, index_accessor);
+			if (index_accessor.componentType == Microsoft::glTF::ComponentType::COMPONENT_UNSIGNED_BYTE)
+			{
+				auto indexBuffer = resource_reader->ReadBinaryData<uint8_t>(document, index_accessor);
+				work->indexBuffer_.clear();
+				work->indexBuffer_.reserve(indexBuffer.size());
+				for (auto&& index : indexBuffer)
+				{
+					work->indexBuffer_.push_back((uint32_t)index);
+				}
+			}
+			if (index_accessor.componentType == Microsoft::glTF::ComponentType::COMPONENT_UNSIGNED_SHORT)
+			{
+				auto indexBuffer = resource_reader->ReadBinaryData<uint16_t>(document, index_accessor);
+				work->indexBuffer_.clear();
+				work->indexBuffer_.reserve(indexBuffer.size());
+				for (auto&& index : indexBuffer)
+				{
+					work->indexBuffer_.push_back((uint32_t)index);
+				}
+			}
+			if (index_accessor.componentType == Microsoft::glTF::ComponentType::COMPONENT_UNSIGNED_INT)
+			{
+				work->indexBuffer_ = resource_reader->ReadBinaryData<uint32_t>(document, index_accessor);
+			}
 
 			// create base vertex buffer.
 			std::string accessorId;
@@ -325,9 +410,10 @@ bool MeshWork::ReadGLTFMesh(const std::string& inputPath, const std::string& inp
 				work->vertexBuffer_.resize(vertex_count);
 				for (size_t i = 0; i < vertex_count; ++i)
 				{
-					work->vertexBuffer_[i].pos.x = data[i * 3 + 0];
-					work->vertexBuffer_[i].pos.y = data[i * 3 + 1];
-					work->vertexBuffer_[i].pos.z = data[i * 3 + 2];
+					DirectX::XMFLOAT3 v(data[i * 3 + 0], data[i * 3 + 1], data[i * 3 + 2]);
+					DirectX::XMVECTOR V = DirectX::XMLoadFloat3(&v);
+					V = DirectX::XMVector3TransformCoord(V, transform);
+					DirectX::XMStoreFloat3(&work->vertexBuffer_[i].pos, V);
 				}
 
 				if (prim.TryGetAttributeAccessorId("NORMAL", accessorId))
@@ -336,9 +422,10 @@ bool MeshWork::ReadGLTFMesh(const std::string& inputPath, const std::string& inp
 					auto data = resource_reader->ReadBinaryData<float>(document, accessor);
 					for (size_t i = 0; i < vertex_count; ++i)
 					{
-						work->vertexBuffer_[i].normal.x = data[i * 3 + 0];
-						work->vertexBuffer_[i].normal.y = data[i * 3 + 1];
-						work->vertexBuffer_[i].normal.z = data[i * 3 + 2];
+						DirectX::XMFLOAT3 n(data[i * 3 + 0], data[i * 3 + 1], data[i * 3 + 2]);
+						DirectX::XMVECTOR N = DirectX::XMLoadFloat3(&n);
+						N = DirectX::XMVector3Normalize(DirectX::XMVector3TransformNormal(N, transform));
+						DirectX::XMStoreFloat3(&work->vertexBuffer_[i].normal, N);
 					}
 				}
 				if (prim.TryGetAttributeAccessorId("TEXCOORD_0", accessorId))
@@ -437,7 +524,7 @@ size_t MeshWork::MergeSubmesh()
 	{
 		if (*it == nullptr)
 		{
-			submeshes_.erase(it);
+			it = submeshes_.erase(it);
 		}
 		else
 		{

@@ -10,11 +10,16 @@
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/vector.hpp>
 
+#include <DirectXTex.h>
+
 #include <string>
 #include <fstream>
 #include <sstream>
 
 #include "mesh_work.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "../../External/stb/stb_image.h"
 
 #define private public
 #include "sl12/resource_mesh.h"
@@ -63,6 +68,17 @@ namespace
 		return ret;
 	}
 
+	std::string GetFileName(const std::string& filename)
+	{
+		std::string ret = filename;
+		auto pos = filename.rfind('.');
+		if (pos != std::string::npos)
+		{
+			ret.erase(pos);
+		}
+		return ret;
+	}
+
 	std::string GetPath(const std::string& filename)
 	{
 		std::string ret = "./";
@@ -74,6 +90,17 @@ namespace
 		return ret;
 	}
 
+	std::string GetTextureKind(const std::string& filename)
+	{
+		std::string name = GetFileName(filename);
+		size_t pos = name.rfind(".");
+		std::string ret;
+		if (pos != std::string::npos)
+		{
+			ret = name.data() + pos + 1;
+		}
+		return ret;
+	}
 }
 
 struct ToolOptions
@@ -83,6 +110,8 @@ struct ToolOptions
 	std::string		outputFilePath = "";
 	std::string		outputTexPath = "";
 
+	bool			textureDDS = true;
+	bool			compressBC7 = false;
 	bool			mergeFlag = true;
 	bool			optimizeFlag = true;
 	bool			meshletFlag = false;
@@ -95,12 +124,125 @@ void DisplayHelp()
 	fprintf(stdout, "    -i <file_path>  : input glTf(.glb) file path.\n");
 	fprintf(stdout, "    -o <file_path>  : output sl12 mesh(.rmesh) file path.\n");
 	fprintf(stdout, "    -to <directory> : output texture file directory.\n");
+	fprintf(stdout, "    -dds <0/1>      : change texture format png to dds, or not. (default: 1)\n");
+	fprintf(stdout, "    -bc7 <0/1>      : if 1, use bc7 compression for a part of dds. if 0, use bc3. (default: 0)\n");
 	fprintf(stdout, "    -merge <0/1>    : merge submeshes have same material. (default: 1)\n");
 	fprintf(stdout, "    -opt <0/1>      : optimize mesh. (default: 1)\n");
 	fprintf(stdout, "    -let <0/1>      : create meshlets. (default: 0)\n");
 	fprintf(stdout, "\n");
 	fprintf(stdout, "example:\n");
 	fprintf(stdout, "    glTFtoMesh.exe -i \"D:/input/sample.glb\" -o \"D:/output/sample.rmesh\" -to \"D:/output/textures/\" -let 1\n");
+}
+
+bool ConvertToDDS(TextureWork* pTex, const std::string& outputFilePath, bool isSrgb, bool isNormal, bool isBC7)
+{
+	// read png image.
+	int width, height, bpp;
+	auto pixels = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(pTex->GetBinary().data()), static_cast<int>(pTex->GetBinary().size()), &width, &height, &bpp, 0);
+	if (!pixels || (bpp != 3 && bpp != 4))
+	{
+		return false;
+	}
+
+	// convert to DirectX image.
+	std::unique_ptr<DirectX::ScratchImage> image(new DirectX::ScratchImage());
+	auto hr = image->Initialize2D(DXGI_FORMAT_R8G8B8A8_UNORM, width, height, 1, 1);
+	bool has_alpha = false;
+	if (FAILED(hr))
+	{
+		return false;
+	}
+	if (bpp == 3)
+	{
+		auto src = pixels;
+		auto dst = image->GetPixels();
+		for (int y = 0; y < height; y++)
+		{
+			for (int x = 0; x < height; x++)
+			{
+				dst[0] = src[0];
+				dst[1] = src[1];
+				dst[2] = src[2];
+				dst[3] = 0xff;
+				src += 3;
+				dst += 4;
+			}
+		}
+	}
+	else
+	{
+		auto src = pixels;
+		auto dst = image->GetPixels();
+		for (int y = 0; y < height; y++)
+		{
+			for (int x = 0; x < height; x++)
+			{
+				has_alpha = has_alpha || (src[3] < 0xff);
+				dst[0] = src[0];
+				dst[1] = src[1];
+				dst[2] = src[2];
+				dst[3] = src[3];
+				src += 4;
+				dst += 4;
+			}
+		}
+	}
+	stbi_image_free(pixels);
+
+	// generate full mips.
+	std::unique_ptr<DirectX::ScratchImage> mipped_image(new DirectX::ScratchImage());
+	hr = DirectX::GenerateMipMaps(
+		*image->GetImage(0, 0, 0),
+		DirectX::TEX_FILTER_CUBIC | DirectX::TEX_FILTER_FORCE_NON_WIC,
+		0,
+		*mipped_image);
+	image.swap(mipped_image);
+
+	// compress.
+	DXGI_FORMAT compress_format = (isSrgb) ? DXGI_FORMAT_BC1_UNORM_SRGB : DXGI_FORMAT_BC1_UNORM;
+	if (has_alpha || isNormal)
+	{
+		compress_format = (isBC7)
+			? ((isSrgb) ? DXGI_FORMAT_BC7_UNORM_SRGB : DXGI_FORMAT_BC7_UNORM)
+			: ((isSrgb) ? DXGI_FORMAT_BC3_UNORM_SRGB : DXGI_FORMAT_BC3_UNORM);
+	}
+	DirectX::TEX_COMPRESS_FLAGS comp_flag = DirectX::TEX_COMPRESS_PARALLEL;
+	if (isSrgb)
+	{
+		comp_flag |= DirectX::TEX_COMPRESS_SRGB_OUT;
+	}
+	std::unique_ptr<DirectX::ScratchImage> comp_image(new DirectX::ScratchImage());
+	hr = DirectX::Compress(
+		image->GetImages(),
+		image->GetImageCount(),
+		image->GetMetadata(),
+		compress_format,
+		comp_flag,
+		DirectX::TEX_THRESHOLD_DEFAULT,
+		*comp_image);
+	if (FAILED(hr))
+	{
+		return false;
+	}
+	image.swap(comp_image);
+
+	size_t len;
+	mbstowcs_s(&len, nullptr, 0, outputFilePath.c_str(), 0);
+	std::wstring of;
+	of.resize(len + 1);
+	mbstowcs_s(&len, (wchar_t*)of.data(), of.length(), outputFilePath.c_str(), of.length());
+	hr = DirectX::SaveToDDSFile(
+		image->GetImages(),
+		image->GetImageCount(),
+		image->GetMetadata(),
+		DirectX::DDS_FLAGS_NONE,
+		of.c_str());
+	if (FAILED(hr))
+	{
+		return false;
+	}
+
+	return true;
 }
 
 int main(int argv, char* argc[])
@@ -157,6 +299,24 @@ int main(int argv, char* argc[])
 				}
 				options.outputTexPath = argc[++i];
 			}
+			else if (op == "-dds" || op == "/dds")
+			{
+				if (i == argv - 1)
+				{
+					fprintf(stderr, "invalid argument. (%s)\n", op.c_str());
+					return -1;
+				}
+				options.textureDDS = std::stoi(argc[++i]);
+			}
+			else if (op == "-bc7" || op == "/bc7")
+			{
+				if (i == argv - 1)
+				{
+					fprintf(stderr, "invalid argument. (%s)\n", op.c_str());
+					return -1;
+				}
+				options.compressBC7 = std::stoi(argc[++i]);
+			}
 			else if (op == "-merge" || op == "/merge")
 			{
 				if (i == argv - 1)
@@ -211,6 +371,14 @@ int main(int argv, char* argc[])
 	{
 		options.outputTexPath = GetPath(ConvYenToSlash(options.outputFilePath));
 	}
+	else
+	{
+		options.outputTexPath = ConvYenToSlash(options.outputTexPath);
+		if (options.outputTexPath[options.outputTexPath.length() - 1] != '/')
+		{
+			options.outputTexPath += '/';
+		}
+	}
 
 	{
 		auto outDir = GetPath(ConvYenToSlash(options.outputFilePath));
@@ -218,38 +386,86 @@ int main(int argv, char* argc[])
 		MakeSureDirectoryPathExists(ConvSlashToYen(options.outputTexPath).c_str());
 	}
 
+	fprintf(stdout, "read glTF mesh. (%s)\n", options.inputFileName.c_str());
 	auto mesh_work = std::make_unique<MeshWork>();
 	if (!mesh_work->ReadGLTFMesh(options.inputPath, options.inputFileName))
 	{
+		fprintf(stderr, "failed to read glTF mesh. (%s)\n", options.inputFileName.c_str());
 		return -1;
 	}
 
 	if (options.mergeFlag)
 	{
+		fprintf(stdout, "merge submeshes.\n");
 		if (mesh_work->MergeSubmesh() == 0)
 		{
+			fprintf(stderr, "failed to merge submeshes.\n");
 			return -1;
 		}
 	}
 
 	if (options.optimizeFlag)
 	{
+		fprintf(stdout, "optimize mesh.\n");
 		mesh_work->OptimizeSubmesh();
 	}
 
 	if (options.meshletFlag)
 	{
+		fprintf(stdout, "build meshlets.\n");
 		mesh_work->BuildMeshlets();
 	}
 
 	// output textures.
-	for (auto&& tex : mesh_work->GetTextures())
+	if (options.textureDDS)
 	{
-		std::fstream ofs(options.outputTexPath + tex->GetName(), std::ios::out | std::ios::binary);
-		ofs.write((const char*)tex->GetBinary().data(), tex->GetBinary().size());
+		if (!mesh_work->GetTextures().empty())
+		{
+			fprintf(stdout, "output DDS textures.\n");
+			HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
+			for (auto&& tex : mesh_work->GetTextures())
+			{
+				std::string name = GetFileName(tex->GetName()) + ".dds";
+				std::string kind = GetTextureKind(tex->GetName());
+				fprintf(stdout, "writing %s texture... (kind: %s)\n", name.c_str(), kind.c_str());
+				if (!ConvertToDDS(tex.get(), options.outputTexPath + name, kind == "bc", kind == "n", options.compressBC7))
+				{
+					fprintf(stderr, "failed to write %s texture...\n", name.c_str());
+					return -1;
+				}
+			}
+
+			CoUninitialize();
+			fprintf(stdout, "complete to output DDS textures.\n");
+		}
+	}
+	else
+	{
+		fprintf(stdout, "output PNG textures.\n");
+		for (auto&& tex : mesh_work->GetTextures())
+		{
+			fprintf(stdout, "writing %s texture...\n", tex->GetName().c_str());
+			std::fstream ofs(options.outputTexPath + tex->GetName(), std::ios::out | std::ios::binary);
+			ofs.write((const char*)tex->GetBinary().data(), tex->GetBinary().size());
+		}
+		fprintf(stdout, "complete to output PNG textures.\n");
 	}
 
+	auto PNGtoDDS = [](const std::string& filename)
+	{
+		std::string ret = filename;
+		auto pos = ret.rfind(".png");
+		if (pos != std::string::npos)
+		{
+			ret.erase(pos);
+			ret += ".dds";
+		}
+		return ret;
+	};
+
 	// output binary.
+	fprintf(stdout, "output rmesh binary.\n");
 	auto out_resource = std::make_unique<sl12::ResourceMesh>();
 	out_resource->boundingSphere_.centerX = mesh_work->GetBoundingSphere().center.x;
 	out_resource->boundingSphere_.centerY = mesh_work->GetBoundingSphere().center.y;
@@ -263,11 +479,21 @@ int main(int argv, char* argc[])
 	out_resource->boundingBox_.maxZ = mesh_work->GetBoundingBox().aabbMax.z;
 	for (auto&& mat : mesh_work->GetMaterials())
 	{
+		auto bcName = mat->GetTextrues()[MaterialWork::TextureKind::BaseColor];
+		auto nName = mat->GetTextrues()[MaterialWork::TextureKind::Normal];
+		auto ormName = mat->GetTextrues()[MaterialWork::TextureKind::ORM];
+		if (options.textureDDS)
+		{
+			bcName = PNGtoDDS(bcName);
+			nName = PNGtoDDS(nName);
+			ormName = PNGtoDDS(ormName);
+		}
+
 		sl12::ResourceMeshMaterial out_mat;
 		out_mat.name_ = mat->GetName();
-		out_mat.textureNames_.push_back(mat->GetTextrues()[MaterialWork::TextureKind::BaseColor]);
-		out_mat.textureNames_.push_back(mat->GetTextrues()[MaterialWork::TextureKind::Normal]);
-		out_mat.textureNames_.push_back(mat->GetTextrues()[MaterialWork::TextureKind::ORM]);
+		out_mat.textureNames_.push_back(bcName);
+		out_mat.textureNames_.push_back(nName);
+		out_mat.textureNames_.push_back(ormName);
 		out_mat.isOpaque_ = mat->IsOpaque();
 		out_resource->materials_.push_back(out_mat);
 	}
@@ -372,6 +598,8 @@ int main(int argv, char* argc[])
 		cereal::BinaryOutputArchive ar(ofs);
 		ar(cereal::make_nvp("mesh", *out_resource));
 	}
+
+	fprintf(stdout, "convert succeeded!!.\n");
 
 	return 0;
 }

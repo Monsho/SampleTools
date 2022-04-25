@@ -4,3 +4,9 @@
 [submodule "third_party/cereal"]
 	path = third_party/cereal
 	url = https://github.com/USCiLab/cereal
+[submodule "third_party/DirectXTex"]
+	path = third_party/DirectXTex
+	url = https://github.com/microsoft/DirectXTex.git
+[submodule "third_party/stb"]
+	path = third_party/stb
+	url = https://github.com/nothings/stb.git

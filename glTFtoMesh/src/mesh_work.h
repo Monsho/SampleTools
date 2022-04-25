@@ -49,6 +49,14 @@ struct Meshlet
 	Cone					cone;
 };	// struct Meshlet
 
+struct NodeWork
+{
+	DirectX::XMFLOAT4X4		transformLocal;
+	DirectX::XMFLOAT4X4		transformGlobal;
+	int						meshIndex;
+	std::vector<uint32_t>	children;
+};
+
 class SubmeshWork
 {
 	friend class MeshWork;
@@ -209,6 +217,7 @@ public:
 
 private:
 	std::string									sourceFilePath_;
+	std::vector<NodeWork>						nodes_;
 	std::vector<std::unique_ptr<MaterialWork>>	materials_;
 	std::vector<std::unique_ptr<SubmeshWork>>	submeshes_;
 	std::vector<std::unique_ptr<TextureWork>>	textures_;
